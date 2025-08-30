@@ -330,3 +330,14 @@ RunService.RenderStepped:Connect(function()
     fovCircle.Position = mousePos
     fovCircle.Visible = true
 end)
+
+-- JOIN NOTIFICATIONS
+Players.PlayerAdded:Connect(function(plr)
+    if keyEntered and states.notifications.state then
+        StarterGui:SetCore("SendNotification", {
+            Title = "Player Joined",
+            Text = plr.Name.." has joined the game!",
+            Duration = 5
+        })
+    end
+end)

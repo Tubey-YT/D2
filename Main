@@ -1,0 +1,332 @@
+--// SERVICES
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+local StarterGui = game:GetService("StarterGui")
+local LocalPlayer = Players.LocalPlayer
+local Camera = workspace.CurrentCamera
+local character = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
+
+--// CONFIG
+local lockDistance = 1000
+local flySpeed = 50
+local toggleKey = Enum.KeyCode.RightControl
+local fov = 70
+local validKey = "12345" -- KEY SYSTEM PASSWORD
+
+--// STATES
+local states = {
+    esp = {state=false},
+    tracers = {state=false, color=Color3.fromRGB(255,0,0)},
+    bones = {state=false, color=Color3.fromRGB(0,0,255)},
+    boxes = {state=false, color=Color3.fromRGB(0,255,0)},
+    fly = {state=false},
+    lock = {state=false},
+    notifications = {state=true}
+}
+
+local keyEntered = false
+local highlights, tracers, boxes, bones = {}, {}, {}, {}
+
+--// GUI SETUP
+local screenGui = Instance.new("ScreenGui", LocalPlayer:WaitForChild("PlayerGui"))
+screenGui.ResetOnSpawn = false
+
+-- KEYSYSTEM GUI
+local keyFrame = Instance.new("Frame")
+keyFrame.Size = UDim2.new(0,300,0,150)
+keyFrame.Position = UDim2.new(0.5,-150,0.5,-75)
+keyFrame.BackgroundColor3 = Color3.fromRGB(20,20,20)
+keyFrame.Parent = screenGui
+local keyCorner = Instance.new("UICorner", keyFrame)
+keyCorner.CornerRadius = UDim.new(0,15)
+
+local keyBox = Instance.new("TextBox", keyFrame)
+keyBox.Size = UDim2.new(0,200,0,40)
+keyBox.Position = UDim2.new(0.5,-100,0.3,0)
+keyBox.PlaceholderText = "Enter Key"
+keyBox.Text = ""
+keyBox.TextScaled = true
+keyBox.BackgroundColor3 = Color3.fromRGB(40,40,40)
+keyBox.TextColor3 = Color3.new(1,1,1)
+Instance.new("UICorner", keyBox).CornerRadius = UDim.new(0,10)
+
+local keyButton = Instance.new("TextButton", keyFrame)
+keyButton.Size = UDim2.new(0,100,0,40)
+keyButton.Position = UDim2.new(0.5,-50,0.7,0)
+keyButton.Text = "Submit"
+keyButton.TextScaled = true
+keyButton.BackgroundColor3 = Color3.fromRGB(60,60,60)
+keyButton.TextColor3 = Color3.new(1,1,1)
+Instance.new("UICorner", keyButton).CornerRadius = UDim.new(0,10)
+
+-- MAIN GUI (hidden until key is correct)
+local frame = Instance.new("Frame")
+frame.Size = UDim2.new(0, 400, 0, 420)
+frame.Position = UDim2.new(0.5, -200, 0.5, -210)
+frame.BackgroundColor3 = Color3.fromRGB(20,20,20)
+frame.BorderSizePixel = 0
+frame.Active = true
+frame.Draggable = true
+frame.Visible = false
+frame.Parent = screenGui
+Instance.new("UICorner", frame).CornerRadius = UDim.new(0,20)
+
+-- CLOSE BUTTON
+local closeButton = Instance.new("TextButton", frame)
+closeButton.Size = UDim2.new(0,30,0,30)
+closeButton.Position = UDim2.new(1,-35,0,5)
+closeButton.BackgroundColor3 = Color3.fromRGB(200,50,50)
+closeButton.TextColor3 = Color3.new(1,1,1)
+closeButton.Text = "X"
+closeButton.TextScaled = true
+Instance.new("UICorner", closeButton).CornerRadius = UDim.new(0,8)
+closeButton.MouseButton1Click:Connect(function()
+    frame.Visible = false
+end)
+
+-- TABS
+local tabsBar = Instance.new("Frame", frame)
+tabsBar.Size = UDim2.new(1,0,0,40)
+tabsBar.BackgroundTransparency = 1
+
+local function createTabButton(name,posX)
+    local btn = Instance.new("TextButton", tabsBar)
+    btn.Size = UDim2.new(0, 120, 0, 35)
+    btn.Position = UDim2.new(0,posX,0,2)
+    btn.BackgroundColor3 = Color3.fromRGB(50,50,50)
+    btn.TextColor3 = Color3.new(1,1,1)
+    btn.Text = name
+    btn.TextScaled = true
+    Instance.new("UICorner", btn).CornerRadius = UDim.new(0,10)
+    return btn
+end
+local function createTabFrame()
+    local f = Instance.new("Frame", frame)
+    f.Size = UDim2.new(1,0,1,-40)
+    f.Position = UDim2.new(0,0,0,40)
+    f.BackgroundTransparency = 1
+    f.Visible = false
+    return f
+end
+
+local espTabBtn = createTabButton("ESP",0)
+local combatTabBtn = createTabButton("Combat",140)
+local miscTabBtn = createTabButton("Misc",280)
+local settingsTabBtn = createTabButton("Settings",420)
+
+local espTab,combatTab,miscTab,settingsTab = createTabFrame(),createTabFrame(),createTabFrame(),createTabFrame()
+local function switchTab(tabFrame)
+    espTab.Visible,combatTab.Visible,miscTab.Visible,settingsTab.Visible = false,false,false,false
+    tabFrame.Visible = true
+end
+espTabBtn.MouseButton1Click:Connect(function() switchTab(espTab) end)
+combatTabBtn.MouseButton1Click:Connect(function() switchTab(combatTab) end)
+miscTabBtn.MouseButton1Click:Connect(function() switchTab(miscTab) end)
+settingsTabBtn.MouseButton1Click:Connect(function() switchTab(settingsTab) end)
+switchTab(espTab)
+
+-- TOGGLE BUTTON CREATOR
+local function createToggle(name,parent,posY,stateObj)
+    local btn = Instance.new("TextButton", parent)
+    btn.Size = UDim2.new(0,360,0,40)
+    btn.Position = UDim2.new(0,20,0,posY)
+    btn.BackgroundColor3 = Color3.fromRGB(60,60,60)
+    btn.TextColor3 = Color3.new(1,1,1)
+    btn.Text = name.." : "..(stateObj.state and "ON" or "OFF")
+    btn.TextScaled = true
+    Instance.new("UICorner", btn).CornerRadius = UDim.new(0,12)
+    btn.MouseButton1Click:Connect(function()
+        stateObj.state = not stateObj.state
+        btn.Text = name.." : "..(stateObj.state and "ON" or "OFF")
+    end)
+end
+
+-- TOGGLES
+createToggle("ESP",espTab,10,states.esp)
+createToggle("Tracers",espTab,60,states.tracers)
+createToggle("Bones",espTab,110,states.bones)
+createToggle("2D Boxes",espTab,160,states.boxes)
+createToggle("Lock-On",combatTab,10,states.lock)
+createToggle("Fly",miscTab,10,states.fly)
+createToggle("Join Notifications",settingsTab,80,states.notifications)
+
+-- FOV SLIDER
+local fovSlider = Instance.new("TextButton", settingsTab)
+fovSlider.Size = UDim2.new(0,360,0,40)
+fovSlider.Position = UDim2.new(0,20,0,20)
+fovSlider.BackgroundColor3 = Color3.fromRGB(60,60,60)
+fovSlider.Text = "FOV: "..fov
+fovSlider.TextScaled = true
+fovSlider.TextColor3 = Color3.new(1,1,1)
+Instance.new("UICorner", fovSlider).CornerRadius = UDim.new(0,12)
+fovSlider.MouseButton1Click:Connect(function()
+    fov = fov + 10
+    if fov>120 then fov=70 end
+    Camera.FieldOfView = fov
+    fovSlider.Text = "FOV: "..fov
+end)
+
+-- CLEANUP WHEN PLAYER LEAVES
+Players.PlayerRemoving:Connect(function(plr)
+    if highlights[plr] then highlights[plr]:Destroy() highlights[plr] = nil end
+    if tracers[plr] then tracers[plr]:Remove() tracers[plr] = nil end
+    if boxes[plr] then boxes[plr]:Remove() boxes[plr] = nil end
+    if bones[plr] then
+        for _, line in pairs(bones[plr]) do if line then line:Remove() end end
+        bones[plr] = nil
+    end
+end)
+Players.PlayerAdded:Connect(function(plr)
+    highlights[plr], tracers[plr], boxes[plr], bones[plr] = nil,nil,nil,nil
+end)
+
+-- KEYSYSTEM HANDLER
+keyButton.MouseButton1Click:Connect(function()
+    if keyBox.Text == validKey then
+        keyEntered = true
+        keyFrame.Visible = false
+        frame.Visible = true
+    else
+        keyBox.Text = "INVALID"
+        task.delay(1,function() keyBox.Text = "" end)
+    end
+end)
+
+--// ESP / TRACERS / BONES / BOXES LOOP
+RunService.RenderStepped:Connect(function()
+    if not keyEntered then return end
+    for _,plr in ipairs(Players:GetPlayers()) do
+        if plr ~= LocalPlayer and plr.Character and plr.Character:FindFirstChild("HumanoidRootPart") then
+            local root = plr.Character.HumanoidRootPart
+            local pos, onscreen = Camera:WorldToViewportPoint(root.Position)
+
+            -- ESP highlight
+            if states.esp.state then
+                if not highlights[plr] then
+                    local hl = Instance.new("Highlight", plr.Character)
+                    hl.FillTransparency = 1
+                    hl.OutlineColor = Color3.new(1,1,1)
+                    highlights[plr] = hl
+                end
+            else if highlights[plr] then highlights[plr]:Destroy() highlights[plr] = nil end end
+
+            -- Tracers
+            if states.tracers.state then
+                if not tracers[plr] then
+                    tracers[plr] = Drawing.new("Line")
+                    tracers[plr].Thickness = 2
+                    tracers[plr].Color = states.tracers.color
+                end
+                if onscreen then
+                    tracers[plr].From = Vector2.new(Camera.ViewportSize.X/2, Camera.ViewportSize.Y)
+                    tracers[plr].To = Vector2.new(pos.X,pos.Y)
+                    tracers[plr].Visible = true
+                else tracers[plr].Visible = false end
+            elseif tracers[plr] then tracers[plr]:Remove() tracers[plr] = nil end
+
+            -- 2D Boxes
+            if states.boxes.state then
+                if not boxes[plr] then
+                    boxes[plr] = Drawing.new("Square")
+                    boxes[plr].Thickness = 2
+                    boxes[plr].Color = states.boxes.color
+                    boxes[plr].Filled = false
+                end
+                if onscreen then
+                    boxes[plr].Visible = true
+                    boxes[plr].Position = Vector2.new(pos.X-25,pos.Y-40)
+                    boxes[plr].Size = Vector2.new(50,80)
+                else boxes[plr].Visible = false end
+            elseif boxes[plr] then boxes[plr]:Remove() boxes[plr] = nil end
+
+            -- Bones
+            if states.bones.state then
+                if not bones[plr] then
+                    bones[plr] = {Head = Drawing.new("Line"), Torso = Drawing.new("Line")}
+                    for _,l in pairs(bones[plr]) do l.Color = states.bones.color l.Thickness = 2 end
+                end
+                if onscreen and plr.Character:FindFirstChild("Head") then
+                    local headPos = Camera:WorldToViewportPoint(plr.Character.Head.Position)
+                    bones[plr].Head.From = Vector2.new(pos.X,pos.Y)
+                    bones[plr].Head.To = Vector2.new(headPos.X,headPos.Y)
+                    bones[plr].Head.Visible = true
+                else for _,l in pairs(bones[plr]) do l.Visible = false end end
+            elseif bones[plr] then for _,l in pairs(bones[plr]) do l:Remove() end bones[plr] = nil end
+        end
+    end
+end)
+
+--// FLY SYSTEM
+local keys = {W=false, A=false, S=false, D=false, Space=false, Shift=false}
+UserInputService.InputBegan:Connect(function(input, processed)
+    if processed then return end
+    if input.KeyCode == Enum.KeyCode.W then keys.W = true end
+    if input.KeyCode == Enum.KeyCode.A then keys.A = true end
+    if input.KeyCode == Enum.KeyCode.S then keys.S = true end
+    if input.KeyCode == Enum.KeyCode.D then keys.D = true end
+    if input.KeyCode == Enum.KeyCode.Space then keys.Space = true end
+    if input.KeyCode == Enum.KeyCode.LeftShift then keys.Shift = true end
+end)
+UserInputService.InputEnded:Connect(function(input)
+    if input.KeyCode == Enum.KeyCode.W then keys.W = false end
+    if input.KeyCode == Enum.KeyCode.A then keys.A = false end
+    if input.KeyCode == Enum.KeyCode.S then keys.S = false end
+    if input.KeyCode == Enum.KeyCode.D then keys.D = false end
+    if input.KeyCode == Enum.KeyCode.Space then keys.Space = false end
+    if~
+        local moveDir = Vector3.new(0,0,0)
+        if keys.W then moveDir += forward end
+        if keys.S then moveDir -= forward end
+        if keys.A then moveDir -= right end
+        if keys.D then moveDir += right end
+        if keys.Space then moveDir += up end
+        if keys.Shift then moveDir -= up end
+        if moveDir.Magnitude > 0 then moveDir = moveDir.Unit * flySpeed end
+        local root = character:FindFirstChild("HumanoidRootPart")
+        if root then root.Velocity = moveDir end
+    end
+end)
+
+--// LOCK-ON AIMBOT
+local function getClosestTarget()
+    local closest,dist = nil,math.huge
+    for _,plr in ipairs(Players:GetPlayers()) do
+        if plr ~= LocalPlayer and plr.Character and plr.Character:FindFirstChild("Head") then
+            local head = plr.Character.Head
+            local pos,onscreen = Camera:WorldToViewportPoint(head.Position)
+            if onscreen then
+                local mousePos = UserInputService:GetMouseLocation()
+                local diff = (Vector2.new(pos.X,pos.Y) - mousePos).Magnitude
+                if diff < dist and diff < 200 then -- FOV radius
+                    dist = diff
+                    closest = head
+                end
+            end
+        end
+    end
+    return closest
+end
+RunService.RenderStepped:Connect(function()
+    if states.lock.state and keyEntered then
+        local target = getClosestTarget()
+        if target then
+            Camera.CFrame = CFrame.new(Camera.CFrame.Position, target.Position)
+        end
+    end
+end)
+
+--// FOV CIRCLE
+local fovCircle = Drawing.new("Circle")
+fovCircle.Radius = 200 -- same as aimbot FOV
+fovCircle.Color = Color3.fromRGB(255,0,0)
+fovCircle.Thickness = 2
+fovCircle.Visible = true
+fovCircle.Filled = false
+
+RunService.RenderStepped:Connect(function()
+    if not keyEntered then fovCircle.Visible = false return end
+    local mousePos = UserInputService:GetMouseLocation()
+    fovCircle.Position = mousePos
+    fovCircle.Visible = true
+end)
